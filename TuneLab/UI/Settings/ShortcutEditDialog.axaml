@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="220"
+        x:Class="TuneLab.UI.ShortcutEditDialog"
+        Title="Shortcut - TuneLab"
+        Width="520"
+        Height="220"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="40"
+        ExtendClientAreaToDecorationsHint="True">
+
+    <DockPanel>
+        <Grid DockPanel.Dock="Top" Height="40" x:Name="TitleBar">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Center" Orientation="Horizontal" IsHitTestVisible="False"/>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Orientation="Horizontal" IsHitTestVisible="False">
+                <Label Content="Edit Shortcut" x:Name="TitleLabel" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" BorderThickness="0" IsHitTestVisible="False"/>
+            </StackPanel>
+            <StackPanel Grid.Column="2" x:Name="WindowControl" HorizontalAlignment="Right" VerticalAlignment="Center" />
+        </Grid>
+
+        <DockPanel x:Name="Content">
+            <StackPanel Margin="24" Spacing="12">
+                <TextBlock x:Name="CommandNameLabel" FontSize="18" FontWeight="Bold"/>
+                <TextBlock x:Name="HintLabel" TextWrapping="Wrap"/>
+                <Border x:Name="ShortcutBorder" Height="48" CornerRadius="8" Padding="12">
+                    <TextBlock x:Name="ShortcutValueLabel" FontFamily="Consolas" VerticalAlignment="Center" FontSize="16"/>
+                </Border>
+            </StackPanel>
+        </DockPanel>
+    </DockPanel>
+</Window>

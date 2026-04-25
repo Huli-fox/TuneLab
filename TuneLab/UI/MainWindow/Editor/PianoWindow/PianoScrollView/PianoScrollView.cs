@@ -25,10 +25,11 @@ using TuneLab.I18N;
 using Avalonia.Media.Imaging;
 using TuneLab.Configs;
 using System.IO;
+using TuneLab.UI.Commands;
 
 namespace TuneLab.UI;
 
-internal partial class PianoScrollView : View, IPianoScrollView
+internal partial class PianoScrollView : View, IPianoScrollView, ICommandContext
 {
     public interface IDependency
     {
@@ -54,6 +55,11 @@ internal partial class PianoScrollView : View, IPianoScrollView
     public PianoScrollView(IDependency dependency)
     {
         mDependency = dependency;
+        mCommands = new CommandMap(new Dictionary<CommandId, Action>
+        {
+            [CommandId.PianoLyricNextNote] = () => MoveLyricInput(false),
+            [CommandId.PianoLyricPreviousNote] = () => MoveLyricInput(true),
+        });
 
         mMiddleDragOperation = new(this);
         mNoteSelectOperation = new(this);
@@ -1012,26 +1018,45 @@ internal partial class PianoScrollView : View, IPianoScrollView
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.Key == Key.Tab)
-        {
-            if (Part != null && mInputLyricNote != null)
-            {
-                var x = TickAxis.Tick2X(mInputLyricNote.GlobalStartPos());
-                var y = PitchAxis.Pitch2Y(mInputLyricNote.Pitch.Value);
-                var note = e.HasModifiers(ModifierKeys.Shift) ? mInputLyricNote.Last : mInputLyricNote.Next;
-                mLyricInput.Unfocus();
-                if (note != null)
-                {
-                    EnterInputLyric(note);
-                    TickAxis.AnimateMove(x - TickAxis.Tick2X(note.GlobalStartPos()));
-                    PitchAxis.AnimateMove(y - PitchAxis.Pitch2Y(note.Pitch.Value));
-                }
-                e.Handled = true;
-            }
-        }
+        // Lyric navigation is a local text-input exception:
+        // keep Tab in this view, but do not bubble it into the parent command chain.
+        if (CommandRouter.TryHandle(e, this, ignoreTextBox: true, bubbleToParent: false))
+            return;
 
         if (e.IsHandledByTextBox())
             return;
+    }
+
+    ICommandContext? ICommandContext.ParentCommandContext => null;
+
+    bool ICommandContext.CanExecuteCommand(CommandId command)
+    {
+        if (mInputLyricNote == null || Part == null)
+            return false;
+
+        return mCommands.Contains(command);
+    }
+
+    bool ICommandContext.ExecuteCommand(CommandId command)
+    {
+        return mCommands.TryExecute(command);
+    }
+
+    void MoveLyricInput(bool moveBackward)
+    {
+        if (Part == null || mInputLyricNote == null)
+            return;
+
+        var x = TickAxis.Tick2X(mInputLyricNote.GlobalStartPos());
+        var y = PitchAxis.Pitch2Y(mInputLyricNote.Pitch.Value);
+        var note = moveBackward ? mInputLyricNote.Last : mInputLyricNote.Next;
+        mLyricInput.Unfocus();
+        if (note != null)
+        {
+            EnterInputLyric(note);
+            TickAxis.AnimateMove(x - TickAxis.Tick2X(note.GlobalStartPos()));
+            PitchAxis.AnimateMove(y - PitchAxis.Pitch2Y(note.Pitch.Value));
+        }
     }
 
     void OnLyricInputComplete()
@@ -1070,6 +1095,7 @@ internal partial class PianoScrollView : View, IPianoScrollView
     const double LyricInputMinWidth = 60;
 
     readonly TextInput mLyricInput;
+    readonly CommandMap mCommands;
 
     IImage? mBackgroundImage = null;
 

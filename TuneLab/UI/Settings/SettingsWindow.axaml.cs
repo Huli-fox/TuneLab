@@ -17,6 +17,8 @@ using Avalonia.Platform.Storage;
 using TuneLab.Base.Event;
 using TuneLab.Audio;
 using TuneLab.Base.Structures;
+using TuneLab.UI.Commands;
+using Button = TuneLab.GUI.Components.Button;
 
 namespace TuneLab.UI;
 
@@ -41,9 +43,7 @@ internal partial class SettingsWindow : Window
                 .AddContent(new() { Item = new IconItem() { Icon = Assets.WindowClose }, ColorSet = new() { Color = Style.TEXT_LIGHT.Opacity(0.7) } });
         closeButton.Clicked += () =>
         {
-            Settings.Save(PathManager.SettingsFilePath);
-            s.DisposeAll();
-            Close();
+            CloseSettingsWindow();
         };
 
         WindowControl.Children.Add(closeButton);
@@ -244,8 +244,157 @@ internal partial class SettingsWindow : Window
             }
             listView.Content.Children.Add(panel);
         }
+        {
+            var divider = new Border() { Height = 1, Margin = new(24, 16), Background = Style.BACK.ToBrush() };
+            listView.Content.Children.Add(divider);
+        }
+        {
+            var panel = new DockPanel() { Margin = new(24, 12, 24, 4) };
+            var title = new TextBlock()
+            {
+                Text = "Keyboard Shortcuts".Tr(this),
+                FontSize = 18,
+                FontWeight = FontWeight.Bold,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            };
+            panel.AddDock(title);
+
+            var resetAllButton = CreateActionButton("Reset All".Tr(this), 96);
+            resetAllButton.Clicked += () =>
+            {
+                ShortcutRegistry.ResetAll();
+                RefreshShortcutRows();
+            };
+            panel.AddDock(resetAllButton, Dock.Right);
+            listView.Content.Children.Add(panel);
+        }
+        {
+            var description = new TextBlock()
+            {
+                Margin = new(24, 0, 24, 12),
+                Text = "Changes take effect immediately and will be saved when this window closes.".Tr(this),
+                Foreground = Style.TEXT_LIGHT.ToBrush(),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            listView.Content.Children.Add(description);
+        }
+        listView.Content.Children.Add(mShortcutRowsHost);
+        RefreshShortcutRows();
+
         Content.AddDock(listView);
     }
 
+    void CloseSettingsWindow()
+    {
+        Settings.Save(PathManager.SettingsFilePath);
+        s.DisposeAll();
+        Close();
+    }
+
+    void RefreshShortcutRows()
+    {
+        mShortcutRowsHost.Children.Clear();
+        var groups = ShortcutHelpRegistry
+            .GetAll()
+            .GroupBy(item => item.Category)
+            .OrderBy(group => group.Key);
+
+        foreach (var group in groups)
+        {
+            mShortcutRowsHost.Children.Add(new TextBlock()
+            {
+                Text = GetCategoryName(group.Key),
+                Margin = new(24, 12, 24, 4),
+                FontSize = 16,
+                FontWeight = FontWeight.Bold,
+                Foreground = Style.TEXT_LIGHT.ToBrush(),
+            });
+
+            foreach (var item in group)
+            {
+                mShortcutRowsHost.Children.Add(BuildShortcutRow(item));
+            }
+        }
+    }
+
+    Control BuildShortcutRow(ShortcutHelpItem item)
+    {
+        var panel = new DockPanel() { Margin = new(24, 8) };
+
+        var resetButton = CreateActionButton("Reset".Tr(TC.Dialog));
+        resetButton.Clicked += () =>
+        {
+            ShortcutRegistry.ResetShortcut(item.Command);
+            RefreshShortcutRows();
+        };
+        panel.AddDock(resetButton, Dock.Right);
+
+        var editButton = CreateActionButton("Edit".Tr(TC.Dialog));
+        editButton.Clicked += async () =>
+        {
+            if (!CommandMetadataRegistry.TryGet(item.Command, out var metadata))
+                return;
+
+            var dialog = new ShortcutEditDialog(metadata, item.Shortcut);
+            var shortcut = await dialog.ShowDialog<Shortcut?>(this);
+            if (!shortcut.HasValue)
+                return;
+
+            if (ShortcutRegistry.TryFindCommand(shortcut.Value, out var conflictCommand, item.Command) &&
+                CommandMetadataRegistry.TryGet(conflictCommand, out var conflictMetadata))
+            {
+                await this.ShowMessage("Shortcut Conflict".Tr(this), "This shortcut is already assigned to".Tr(this) + ": " + conflictMetadata.DisplayName.Tr(this));
+                return;
+            }
+
+            ShortcutRegistry.SetShortcut(item.Command, shortcut.Value);
+            RefreshShortcutRows();
+        };
+        panel.AddDock(editButton, Dock.Right);
+
+        panel.AddDock(new TextBlock()
+        {
+            Text = ShortcutDisplayFormatter.Format(item.Shortcut),
+            FontFamily = Assets.NotoMono,
+            Width = 96,
+            Margin = new(0, 0, 12, 0),
+            TextAlignment = TextAlignment.Right,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Foreground = Style.LIGHT_WHITE.ToBrush(),
+        }, Dock.Right);
+
+        panel.AddDock(new TextBlock()
+        {
+            Text = item.DisplayName.Tr(this),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Foreground = Style.WHITE.ToBrush(),
+        });
+
+        return panel;
+    }
+
+    Button CreateActionButton(string text, double width = 80)
+    {
+        var button = new Button() { Width = width, Height = 28, Margin = new(8, 0, 0, 0) };
+        button.AddContent(new() { Item = new BorderItem() { CornerRadius = 6 }, ColorSet = new() { Color = Style.BUTTON_PRIMARY, HoveredColor = Style.BUTTON_PRIMARY_HOVER } });
+        button.AddContent(new() { Item = new TextItem() { Text = text }, ColorSet = new() { Color = Colors.White } });
+        return button;
+    }
+
+    static string GetCategoryName(CommandCategory category)
+    {
+        return category switch
+        {
+            CommandCategory.App => "App".Tr(TC.Menu),
+            CommandCategory.File => "File".Tr(TC.Menu),
+            CommandCategory.Edit => "Edit".Tr(TC.Menu),
+            CommandCategory.Transport => "Transport".Tr(TC.Menu),
+            CommandCategory.Selection => "Selection".Tr(TC.Menu),
+            CommandCategory.Piano => "Piano".Tr(TC.Menu),
+            _ => category.ToString(),
+        };
+    }
+
     readonly DisposableManager s = new();
+    readonly StackPanel mShortcutRowsHost = new() { Spacing = 0 };
 }

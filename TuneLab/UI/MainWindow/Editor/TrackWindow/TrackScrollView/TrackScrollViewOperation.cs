@@ -23,6 +23,7 @@ using Part = TuneLab.Data.Part;
 using Rect = Avalonia.Rect;
 using TuneLab.I18N;
 using Splat;
+using TuneLab.UI.Commands;
 
 namespace TuneLab.UI;
 
@@ -146,11 +147,11 @@ internal partial class TrackScrollView
                                         part.Select();
                                     }
                                     {
-                                        var menuItem = new MenuItem().SetName("Copy".Tr(TC.Menu)).SetAction(Copy).SetInputGesture(Key.C, ModifierKeys.Ctrl);
+                                        var menuItem = new MenuItem().SetName("Copy".Tr(TC.Menu)).BindCommand(CommandId.SelectionCopy, (ICommandContext)mDependency);
                                         menu.Items.Add(menuItem);
                                     }
                                     {
-                                        var menuItem = new MenuItem().SetName("Cut".Tr(TC.Menu)).SetAction(Cut).SetInputGesture(Key.X, ModifierKeys.Ctrl);
+                                        var menuItem = new MenuItem().SetName("Cut".Tr(TC.Menu)).BindCommand(CommandId.SelectionCut, (ICommandContext)mDependency);
                                         menu.Items.Add(menuItem);
                                     }
 
@@ -243,7 +244,7 @@ internal partial class TrackScrollView
                                         }
                                     }
                                     {
-                                        var menuItem = new MenuItem().SetName("Delete".Tr(TC.Menu)).SetAction(DeleteAllSelectedParts).SetInputGesture(Key.Delete);
+                                        var menuItem = new MenuItem().SetName("Delete".Tr(TC.Menu)).BindCommand(CommandId.SelectionDelete, (ICommandContext)mDependency);
                                         menu.Items.Add(menuItem);
                                     }
                                 }
@@ -271,7 +272,7 @@ internal partial class TrackScrollView
                                         var menuItem = new MenuItem().SetName("Paste".Tr(TC.Menu)).SetAction(() =>
                                         {
                                             PasteAt(pos);
-                                        }).SetInputGesture(Key.V, ModifierKeys.Ctrl);
+                                        }).SetCommandShortcut(CommandId.SelectionPaste);
                                         menu.Items.Add(menuItem);
                                     }
                                 }

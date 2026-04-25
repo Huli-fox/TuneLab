@@ -17,6 +17,7 @@ using TuneLab.Base.Science;
 using TuneLab.Base.Utils;
 using TuneLab.I18N;
 using TuneLab.Configs;
+using TuneLab.UI.Commands;
 
 namespace TuneLab.UI;
 
@@ -234,21 +235,21 @@ internal partial class PianoScrollView
 
                                         menu.Items.Add(new Avalonia.Controls.Separator());
                                         {
-                                            var menuItem = new MenuItem().SetName("Copy".Tr(TC.Menu)).SetAction(Copy).SetInputGesture(Key.C, ModifierKeys.Ctrl);
+                                            var menuItem = new MenuItem().SetName("Copy".Tr(TC.Menu)).BindCommand(CommandId.SelectionCopy, (ICommandContext)mDependency);
                                             menu.Items.Add(menuItem);
                                         }
                                         {
-                                            var menuItem = new MenuItem().SetName("Cut".Tr(TC.Menu)).SetAction(Cut).SetInputGesture(Key.X, ModifierKeys.Ctrl);
+                                            var menuItem = new MenuItem().SetName("Cut".Tr(TC.Menu)).BindCommand(CommandId.SelectionCut, (ICommandContext)mDependency);
                                             menu.Items.Add(menuItem);
                                         }
 
                                         menu.Items.Add(new Avalonia.Controls.Separator());
                                         {
-                                            var menuItem = new MenuItem().SetName("Octave Up".Tr(TC.Menu)).SetAction(OctaveUp);
+                                            var menuItem = new MenuItem().SetName("Octave Up".Tr(TC.Menu)).BindCommand(CommandId.PianoOctaveUp, (ICommandContext)mDependency);
                                             menu.Items.Add(menuItem);
                                         }
                                         {
-                                            var menuItem = new MenuItem().SetName("Octave Down".Tr(TC.Menu)).SetAction(OctaveDown);
+                                            var menuItem = new MenuItem().SetName("Octave Down".Tr(TC.Menu)).BindCommand(CommandId.PianoOctaveDown, (ICommandContext)mDependency);
                                             menu.Items.Add(menuItem);
                                         }
 
@@ -295,7 +296,7 @@ internal partial class PianoScrollView
 
                                         menu.Items.Add(new Avalonia.Controls.Separator());
                                         {
-                                            var menuItem = new MenuItem().SetName("Delete".Tr(TC.Menu)).SetAction(Delete).SetInputGesture(Key.Delete);
+                                            var menuItem = new MenuItem().SetName("Delete".Tr(TC.Menu)).BindCommand(CommandId.SelectionDelete, (ICommandContext)mDependency);
                                             menu.Items.Add(menuItem);
                                         }
                                     }
@@ -309,7 +310,7 @@ internal partial class PianoScrollView
                                                 var menuItem = new MenuItem().SetName("Paste".Tr(TC.Menu)).SetAction(() =>
                                                 {
                                                     PasteAt(pos);
-                                                }).SetInputGesture(Key.V, ModifierKeys.Ctrl);
+                                                }).SetCommandShortcut(CommandId.SelectionPaste);
                                                 menu.Items.Add(menuItem);
                                             }
                                         }
@@ -479,15 +480,15 @@ internal partial class PianoScrollView
                                             vibrato.Select();
                                         }
                                         {
-                                            var menuItem = new MenuItem().SetName("Copy").SetAction(Copy).SetInputGesture(Key.C, ModifierKeys.Ctrl);
+                                            var menuItem = new MenuItem().SetName("Copy").BindCommand(CommandId.SelectionCopy, (ICommandContext)mDependency);
                                             menu.Items.Add(menuItem);
                                         }
                                         {
-                                            var menuItem = new MenuItem().SetName("Cut").SetAction(Cut).SetInputGesture(Key.X, ModifierKeys.Ctrl);
+                                            var menuItem = new MenuItem().SetName("Cut").BindCommand(CommandId.SelectionCut, (ICommandContext)mDependency);
                                             menu.Items.Add(menuItem);
                                         }
                                         {
-                                            var menuItem = new MenuItem().SetName("Delete").SetAction(Delete).SetInputGesture(Key.Delete);
+                                            var menuItem = new MenuItem().SetName("Delete").BindCommand(CommandId.SelectionDelete, (ICommandContext)mDependency);
                                             menu.Items.Add(menuItem);
                                         }
                                     }
@@ -501,7 +502,7 @@ internal partial class PianoScrollView
                                                 var menuItem = new MenuItem().SetName("Paste").SetAction(() =>
                                                 {
                                                     PasteAt(pos);
-                                                }).SetInputGesture(Key.V, ModifierKeys.Ctrl);
+                                                }).SetCommandShortcut(CommandId.SelectionPaste);
                                                 menu.Items.Add(menuItem);
                                             }
                                         }

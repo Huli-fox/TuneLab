@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using TuneLab.Base.Event;
 using TuneLab.Base.Utils;
+using TuneLab.UI.Commands;
 
 namespace TuneLab.Configs;
 
@@ -85,6 +86,7 @@ internal static class Settings
         AudioDriver.Value = settingsFile.AudioDriver;
         AudioDevice.Value = settingsFile.AudioDevice;
         TrackHueChangeRate.Value = settingsFile.TrackHueChangeRate;
+        ShortcutRegistry.LoadOverrides(settingsFile.ShortcutOverrides);
     }
 
     public static void Save(string path)
@@ -115,7 +117,8 @@ internal static class Settings
                 SampleRate = SampleRate,
                 AudioDriver = AudioDriver,
                 AudioDevice = AudioDevice,
-                TrackHueChangeRate = TrackHueChangeRate
+                TrackHueChangeRate = TrackHueChangeRate,
+                ShortcutOverrides = ShortcutRegistry.GetOverrides().ToList()
             }, JsonSerializerOptions);
 
             var folder = Path.GetDirectoryName(path);

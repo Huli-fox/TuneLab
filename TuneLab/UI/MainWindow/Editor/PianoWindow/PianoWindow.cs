@@ -16,10 +16,11 @@ using TuneLab.GUI.Components;
 using TuneLab.Base.Utils;
 using TuneLab.Configs;
 using Avalonia.Threading;
+using TuneLab.UI.Commands;
 
 namespace TuneLab.UI;
 
-internal class PianoWindow : DockPanel, PianoRoll.IDependency, PianoScrollView.IDependency, TimelineView.IDependency, ParameterTabBar.IDependency, AutomationRenderer.IDependency, PlayheadLayer.IDependency
+internal class PianoWindow : DockPanel, PianoRoll.IDependency, PianoScrollView.IDependency, TimelineView.IDependency, ParameterTabBar.IDependency, AutomationRenderer.IDependency, PlayheadLayer.IDependency, ICommandContext
 {
     public event Action? ActiveAutomationChanged;
     public event Action? VisibleAutomationChanged;
@@ -74,6 +75,18 @@ internal class PianoWindow : DockPanel, PianoRoll.IDependency, PianoScrollView.I
     public PianoWindow(IDependency dependency)
     {
         mDependency = dependency;
+        mCommands = new CommandMap(new Dictionary<CommandId, Action>
+        {
+            [CommandId.SelectionDelete] = () => PianoScrollView.Delete(),
+            [CommandId.SelectionCopy] = () => PianoScrollView.Copy(),
+            [CommandId.SelectionCut] = () => PianoScrollView.Cut(),
+            [CommandId.SelectionPaste] = () => PianoScrollView.Paste(),
+            [CommandId.SelectionSelectAll] = SelectAllByTool,
+            [CommandId.PianoTransposeUp] = () => PianoScrollView.ChangeKey(+1),
+            [CommandId.PianoTransposeDown] = () => PianoScrollView.ChangeKey(-1),
+            [CommandId.PianoOctaveUp] = () => PianoScrollView.OctaveUp(),
+            [CommandId.PianoOctaveDown] = () => PianoScrollView.OctaveDown(),
+        });
         mParameterHeight = GetStoredParameterHeight();
 
         mTickAxis = new TickAxis();
@@ -172,64 +185,37 @@ internal class PianoWindow : DockPanel, PianoRoll.IDependency, PianoScrollView.I
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.IsHandledByTextBox())
+        if (CommandRouter.TryHandle(e, this))
             return;
 
-        switch (PianoScrollView.OperationState)
-        {
-            case PianoScrollView.State.None:
-                e.Handled = true;
-                if (e.Match(Key.Delete))
-                {
-                    PianoScrollView.Delete();
-                }
-                else if (e.Match(Key.C, ModifierKeys.Ctrl))
-                {
-                    PianoScrollView.Copy();
-                }
-                else if (e.Match(Key.X, ModifierKeys.Ctrl))
-                {
-                    PianoScrollView.Cut();
-                }
-                else if (e.Match(Key.V, ModifierKeys.Ctrl))
-                {
-                    PianoScrollView.Paste();
-                }
-                else if (e.Match(Key.A, ModifierKeys.Ctrl))
-                {
-                    switch (PianoTool.Value)
-                    {
-                        case UI.PianoTool.Note:
-                            Part?.Notes.SelectAllItems();
-                            break;
-                        case UI.PianoTool.Vibrato:
-                            Part?.Vibratos.SelectAllItems();
-                            break;
-                        default:
-                            break;
-                    }
+        if (e.IsHandledByTextBox())
+            return;
+    }
 
-                }
-                else if (e.Match(Key.Up, ModifierKeys.Shift))
-                {
-                    PianoScrollView.OctaveUp();
-                }
-                else if (e.Match(Key.Down, ModifierKeys.Shift))
-                {
-                    PianoScrollView.OctaveDown();
-                }
-                else if (e.Match(Key.Up))
-                {
-                    PianoScrollView.ChangeKey(+1);
-                }
-                else if (e.Match(Key.Down))
-                {
-                    PianoScrollView.ChangeKey(-1);
-                }
-                else
-                {
-                    e.Handled = false;
-                }
+    ICommandContext? ICommandContext.ParentCommandContext => mDependency as ICommandContext;
+
+    bool ICommandContext.CanExecuteCommand(CommandId command)
+    {
+        if (PianoScrollView.OperationState != PianoScrollView.State.None)
+            return false;
+
+        return mCommands.Contains(command);
+    }
+
+    bool ICommandContext.ExecuteCommand(CommandId command)
+    {
+        return mCommands.TryExecute(command);
+    }
+
+    void SelectAllByTool()
+    {
+        switch (PianoTool.Value)
+        {
+            case UI.PianoTool.Note:
+                Part?.Notes.SelectAllItems();
+                break;
+            case UI.PianoTool.Vibrato:
+                Part?.Vibratos.SelectAllItems();
                 break;
         }
     }
@@ -317,6 +303,7 @@ internal class PianoWindow : DockPanel, PianoRoll.IDependency, PianoScrollView.I
     readonly DockPanel mParameterLayer;
 
     readonly Owner<IMidiPart> mPartProvider = new();
+    readonly CommandMap mCommands;
 
     readonly IDependency mDependency;
     bool mWindowStateBound = false;

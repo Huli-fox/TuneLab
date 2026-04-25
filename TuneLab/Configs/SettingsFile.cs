@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using TuneLab.UI.Commands;
 
 namespace TuneLab.Configs;
 
@@ -31,4 +32,5 @@ internal class SettingsFile
     public string AudioDriver { get; set; } = string.Empty;
     public string AudioDevice { get; set; } = string.Empty;
     public double TrackHueChangeRate { get; set; } = 0;
+    public List<ShortcutOverrideFile> ShortcutOverrides { get; set; } = [];
 }

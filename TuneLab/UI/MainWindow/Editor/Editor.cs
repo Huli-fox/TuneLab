@@ -34,13 +34,14 @@ using System.Xml.Linq;
 using System.Text.Json;
 using TuneLab.I18N;
 using TuneLab.Configs;
+using TuneLab.UI.Commands;
 using Splat;
 using System.Reactive.Joins;
 using System.Runtime.InteropServices;
 
 namespace TuneLab.UI;
 
-internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDependency, FunctionBar.IDependency
+internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDependency, FunctionBar.IDependency, ICommandContext
 {
     public Menu Menu { get; }
     public TrackWindow TrackWindow => mTrackWindow;
@@ -52,12 +53,34 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
     public IProvider<IPart> EditingPart => mPianoWindow.PartProvider;
     public INotifiableProperty<PianoTool> PianoTool { get; } = new NotifiableProperty<PianoTool>(UI.PianoTool.Note);
     public INotifiableProperty<PlayScrollTarget> PlayScrollTarget { get; } = new NotifiableProperty<PlayScrollTarget>(UI.PlayScrollTarget.None);
+    public ICommandContext? ParentCommandContext { get; set; }
     public Editor()
     {
         Background = Style.BACK.ToBrush();
         Focusable = true;
         IsTabStop = false;
         mTrackWindowHeight = Settings.TrackWindowHeight;
+        mCommands = new CommandMap(new Dictionary<CommandId, Action>
+        {
+            [CommandId.TransportPlayPause] = ChangePlayState,
+            [CommandId.TransportGoToStart] = GoToStart,
+            [CommandId.TransportGoToEnd] = GoToEnd,
+            [CommandId.EditUndo] = Undo,
+            [CommandId.EditRedo] = Redo,
+            [CommandId.EditSwitchLastPart] = SwitchLastEditingPart,
+            [CommandId.EditOpenSettings] = OpenSettingsWindow,
+            [CommandId.FileNewProject] = NewProject,
+            [CommandId.FileOpenProject] = OpenProject,
+            [CommandId.FileSaveProject] = () => _ = SaveProject(),
+            [CommandId.FileSaveProjectAs] = () => _ = SaveProjectAs(),
+            [CommandId.FileExportMix] = ExportMix,
+            [CommandId.PianoToolNote] = () => mPianoWindow.PianoTool.Value = UI.PianoTool.Note,
+            [CommandId.PianoToolPitch] = () => mPianoWindow.PianoTool.Value = UI.PianoTool.Pitch,
+            [CommandId.PianoToolAnchor] = () => mPianoWindow.PianoTool.Value = UI.PianoTool.Anchor,
+            [CommandId.PianoToolLock] = () => mPianoWindow.PianoTool.Value = UI.PianoTool.Lock,
+            [CommandId.PianoToolVibrato] = () => mPianoWindow.PianoTool.Value = UI.PianoTool.Vibrato,
+            [CommandId.PianoToolSelect] = () => mPianoWindow.PianoTool.Value = UI.PianoTool.Select,
+        });
 
         mPlayhead = new(this);
         if (Enum.TryParse<PlayScrollTarget>(Settings.AutoScrollTarget.Value, out var autoScrollTarget))
@@ -94,28 +117,8 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
             Settings.TrackWindowHeight.Value = mTrackWindowHeight;
         };
         mFunctionBar.CollapsePropertiesAsked += show => mRightSideBar.IsVisible = show;
-        mFunctionBar.GotoStartAsked += () =>
-        {
-            var startTime = 0;
-            AudioEngine.Seek(startTime);
-            if (Project == null) 
-                return;
-
-            var startTick = Project.TempoManager.GetTick(startTime);
-            mTrackWindow.TickAxis.AnimateMoveTickToX(startTick, 0);
-            mPianoWindow.TickAxis.AnimateMoveTickToX(startTick, 0);
-        };
-        mFunctionBar.GotoEndAsked += () =>
-        {
-            var endTime = AudioEngine.EndTime;
-            AudioEngine.Seek(endTime);
-            if (Project == null) 
-                return;
-
-            var endTick = Project.TempoManager.GetTick(endTime);
-            mTrackWindow.TickAxis.AnimateMoveTickToX(endTick, mTrackWindow.TickAxis.ViewLength);
-            mPianoWindow.TickAxis.AnimateMoveTickToX(endTick, mPianoWindow.TickAxis.ViewLength);
-        };
+        mFunctionBar.GotoStartAsked += GoToStart;
+        mFunctionBar.GotoEndAsked += GoToEnd;
         ProjectProvider.ObjectWillChange.Subscribe(OnProjectWillChange, s);
         ProjectProvider.ObjectChanged.Subscribe(OnProjectChanged, s);
         ProjectProvider.When(project => project.Tracks.Any(track => track.Parts.ItemRemoved)).Subscribe(part => { if (part == mEditingPart) SwitchEditingPart(null); });
@@ -185,41 +188,53 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.IsHandledByTextBox())
+        if (CommandRouter.TryHandle(e, this))
             return;
 
-        e.Handled = true;
-        if (e.Match(Key.Space))
+        if (e.IsHandledByTextBox())
+            return;
+    }
+
+    void SwitchLastEditingPart()
+    {
+        if (mLastPart == null || !mDocument.Pushable())
+            return;
+
+        var track = mLastPart.Track;
+        if (track.Parts.Contains(mLastPart) && track.Project.Tracks.Contains(track))
         {
-            ChangePlayState();
+            SwitchEditingPart(mLastPart);
         }
-        else if (e.Match(Key.Z, ModifierKeys.Ctrl))
-        {
-            Undo();
-        }
-        else if (e.Match(Key.Y, ModifierKeys.Ctrl))
-        {
-            Redo();
-        }
-        else if (e.Match(Key.Tab, ModifierKeys.Ctrl))
-        {
-            if (mLastPart != null && mDocument.Pushable())
-            {
-                var track = mLastPart.Track;
-                if (track.Parts.Contains(mLastPart) && track.Project.Tracks.Contains(track))
-                {
-                    SwitchEditingPart(mLastPart);
-                }
-            }
-        }
-        else if (e.ModifierKeys() == ModifierKeys.None && e.Key >= Key.D1 && e.Key <= Key.D6)
-        {
-            mPianoWindow.PianoTool.Value = (PianoTool)(e.Key - Key.D1);
-        }
-        else
-        {
-            e.Handled = false;
-        }
+    }
+
+    void GoToStart()
+    {
+        var startTime = 0;
+        AudioEngine.Seek(startTime);
+        if (Project == null)
+            return;
+
+        var startTick = Project.TempoManager.GetTick(startTime);
+        mTrackWindow.TickAxis.AnimateMoveTickToX(startTick, 0);
+        mPianoWindow.TickAxis.AnimateMoveTickToX(startTick, 0);
+    }
+
+    void GoToEnd()
+    {
+        var endTime = AudioEngine.EndTime;
+        AudioEngine.Seek(endTime);
+        if (Project == null)
+            return;
+
+        var endTick = Project.TempoManager.GetTick(endTime);
+        mTrackWindow.TickAxis.AnimateMoveTickToX(endTick, mTrackWindow.TickAxis.ViewLength);
+        mPianoWindow.TickAxis.AnimateMoveTickToX(endTick, mPianoWindow.TickAxis.ViewLength);
+    }
+
+    void OpenSettingsWindow()
+    {
+        var settingsWindow = new SettingsWindow();
+        settingsWindow.Show(this.Window());
     }
 
     void OnDrop(object? sender, DragEventArgs e)
@@ -802,11 +817,11 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
         {
             var menuBarItem = new MenuItem { Foreground = Style.TEXT_LIGHT.ToBrush(), Focusable = false }.SetTrName("File");
             {
-                var menuItem = new MenuItem().SetTrName("New").SetAction(NewProject).SetShortcut(Key.N, ModifierKeys.Ctrl);
+                var menuItem = new MenuItem().SetTrName("New").BindCommand(CommandId.FileNewProject, this);
                 menuBarItem.Items.Add(menuItem);
             }
             {
-                var menuItem = new MenuItem().SetTrName("Open").SetAction(OpenProject).SetShortcut(Key.O, ModifierKeys.Ctrl);
+                var menuItem = new MenuItem().SetTrName("Open").BindCommand(CommandId.FileOpenProject, this);
                 menuBarItem.Items.Add(menuItem);
             }
             {
@@ -832,11 +847,11 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
                 menuBarItem.Items.Add(mRecentFilesMenu);
             }
             {
-                var menuItem = new MenuItem().SetTrName("Save").SetAction(async () => { await SaveProject(); }).SetShortcut(Key.S, ModifierKeys.Ctrl);
+                var menuItem = new MenuItem().SetTrName("Save").BindCommand(CommandId.FileSaveProject, this);
                 menuBarItem.Items.Add(menuItem);
             }
             {
-                var menuItem = new MenuItem().SetTrName("Save As").SetAction(async () => { await SaveProjectAs(); }).SetShortcut(Key.S, ModifierKeys.Ctrl | ModifierKeys.Shift);
+                var menuItem = new MenuItem().SetTrName("Save As").BindCommand(CommandId.FileSaveProjectAs, this);
                 menuBarItem.Items.Add(menuItem);
             }
             {
@@ -849,7 +864,7 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
                 menuBarItem.Items.Add(menuItem);
             }
             {
-                var menuItem = new MenuItem().SetTrName("Export Mix").SetAction(ExportMix);
+                var menuItem = new MenuItem().SetTrName("Export Mix").BindCommand(CommandId.FileExportMix, this);
                 menuBarItem.Items.Add(menuItem);
             }
             menu.Items.Add(menuBarItem);
@@ -858,21 +873,17 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
         {
             var menuBarItem = new MenuItem { Foreground = Style.TEXT_LIGHT.ToBrush(), Focusable = false }.SetTrName("Edit");
             {
-                var menuItem = new MenuItem().SetTrName("Undo").SetAction(Undo).SetInputGesture(Key.Z, ModifierKeys.Ctrl);
+                var menuItem = new MenuItem().SetTrName("Undo").BindCommand(CommandId.EditUndo, this);
                 menuBarItem.Items.Add(menuItem);
                 mUndoMenuItem = menuItem;
             }
             {
-                var menuItem = new MenuItem().SetTrName("Redo").SetAction(Redo).SetInputGesture(Key.Y, ModifierKeys.Ctrl);
+                var menuItem = new MenuItem().SetTrName("Redo").BindCommand(CommandId.EditRedo, this);
                 menuBarItem.Items.Add(menuItem);
                 mRedoMenuItem = menuItem;
             }
             {
-                var menuItem = new MenuItem().SetTrName("Settings").SetAction(() =>
-                {
-                    var settingsWindow = new SettingsWindow();
-                    settingsWindow.Show(this.Window());
-                });
+                var menuItem = new MenuItem().SetTrName("Settings").BindCommand(CommandId.EditOpenSettings, this);
                 menuBarItem.Items.Add(menuItem);
             }
             menu.Items.Add(menuBarItem);
@@ -900,11 +911,18 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
             {
                 var menuItem = new MenuItem().
                     SetName("Play".Tr(TC.Menu)).
-                    SetAction(ChangePlayState).
-                    SetInputGesture(Key.Space);
+                    BindCommand(CommandId.TransportPlayPause, this);
                 void UpdateHeader() => menuItem.SetName(AudioEngine.IsPlaying ? "Pause".Tr(TC.Menu) : "Play".Tr(TC.Menu));
                 AudioEngine.PlayStateChanged += UpdateHeader;
                 TranslationManager.CurrentLanguage.Modified.Subscribe(UpdateHeader);
+                menuBarItem.Items.Add(menuItem);
+            }
+            {
+                var menuItem = new MenuItem().SetName("Go to Start".Tr(TC.Menu)).BindCommand(CommandId.TransportGoToStart, this);
+                menuBarItem.Items.Add(menuItem);
+            }
+            {
+                var menuItem = new MenuItem().SetName("Go to End".Tr(TC.Menu)).BindCommand(CommandId.TransportGoToEnd, this);
                 menuBarItem.Items.Add(menuItem);
             }
             menu.Items.Add(menuBarItem);
@@ -959,6 +977,16 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
         }
 
         return menu;
+    }
+
+    public bool CanExecuteCommand(CommandId command)
+    {
+        return mCommands.Contains(command);
+    }
+
+    public bool ExecuteCommand(CommandId command)
+    {
+        return mCommands.TryExecute(command);
     }
 
     MenuItem mUndoMenuItem;
@@ -1047,6 +1075,7 @@ internal class Editor : DockPanel, PianoWindow.IDependency, TrackWindow.IDepende
     readonly PianoWindow mPianoWindow;
     readonly SideBar mRightSideBar;
     readonly SideTabBar mRightSideTabBar;
+    readonly CommandMap mCommands;
 
     readonly PropertySideBarContentProvider mPropertySideBarContentProvider = new();
 

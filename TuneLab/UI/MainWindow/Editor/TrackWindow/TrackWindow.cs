@@ -17,10 +17,11 @@ using TuneLab.GUI;
 using TuneLab.Utils;
 using TuneLab.Extensions.Formats.DataInfo;
 using TuneLab.I18N;
+using TuneLab.UI.Commands;
 
 namespace TuneLab.UI;
 
-internal class TrackWindow : DockPanel, TimelineView.IDependency, TrackScrollView.IDependency, PlayheadLayer.IDependency, TrackVerticalAxis.IDependency, TrackHeadList.IDependency
+internal class TrackWindow : DockPanel, TimelineView.IDependency, TrackScrollView.IDependency, PlayheadLayer.IDependency, TrackVerticalAxis.IDependency, TrackHeadList.IDependency, ICommandContext
 {
     public IProvider<IProject> ProjectProvider => mDependency.ProjectProvider;
     public IProvider<ITimeline> TimelineProvider => mDependency.ProjectProvider;
@@ -45,6 +46,14 @@ internal class TrackWindow : DockPanel, TimelineView.IDependency, TrackScrollVie
     public TrackWindow(IDependency dependency)
     {
         mDependency = dependency;
+        mCommands = new CommandMap(new Dictionary<CommandId, Action>
+        {
+            [CommandId.SelectionDelete] = () => TrackScrollView.DeleteAllSelectedParts(),
+            [CommandId.SelectionCopy] = () => TrackScrollView.Copy(),
+            [CommandId.SelectionCut] = () => TrackScrollView.Cut(),
+            [CommandId.SelectionPaste] = () => TrackScrollView.PasteAt(TrackScrollView.GetQuantizedTick(Playhead.Pos)),
+            [CommandId.SelectionSelectAll] = () => Project?.Tracks.SelectMany(track => track.Parts).SelectAllItems(),
+        });
 
         mQuantization = new(MusicTheory.QuantizationBase.Base_1, MusicTheory.QuantizationDivision.Division_8);
         mTickAxis = new();
@@ -101,39 +110,26 @@ internal class TrackWindow : DockPanel, TimelineView.IDependency, TrackScrollVie
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.IsHandledByTextBox())
+        if (CommandRouter.TryHandle(e, this))
             return;
 
-        switch (TrackScrollView.OperationState)
-        {
-            case TrackScrollView.State.None:
-                e.Handled = true;
-                if (e.Match(Key.Delete))
-                {
-                    TrackScrollView.DeleteAllSelectedParts();
-                }
-                else if (e.Match(Key.C, ModifierKeys.Ctrl))
-                {
-                    TrackScrollView.Copy();
-                }
-                else if (e.Match(Key.X, ModifierKeys.Ctrl))
-                {
-                    TrackScrollView.Cut();
-                }
-                else if (e.Match(Key.V, ModifierKeys.Ctrl))
-                {
-                    TrackScrollView.PasteAt(TrackScrollView.GetQuantizedTick(Playhead.Pos));
-                }
-                else if (e.Match(Key.A, ModifierKeys.Ctrl))
-                {
-                    Project?.Tracks.SelectMany(track => track.Parts).SelectAllItems();
-                }
-                else
-                {
-                    e.Handled = false;
-                }
-                break;
-        } 
+        if (e.IsHandledByTextBox())
+            return;
+    }
+
+    ICommandContext? ICommandContext.ParentCommandContext => mDependency as ICommandContext;
+
+    bool ICommandContext.CanExecuteCommand(CommandId command)
+    {
+        if (TrackScrollView.OperationState != TrackScrollView.State.None)
+            return false;
+
+        return mCommands.Contains(command);
+    }
+
+    bool ICommandContext.ExecuteCommand(CommandId command)
+    {
+        return mCommands.TryExecute(command);
     }
 
     readonly Quantization mQuantization;
@@ -144,6 +140,7 @@ internal class TrackWindow : DockPanel, TimelineView.IDependency, TrackScrollVie
     readonly TimelineView mTimelineView;
     readonly TrackScrollView mTrackScrollView;
     readonly PlayheadLayer mPlayheadLayer;
+    readonly CommandMap mCommands;
 
     readonly IDependency mDependency;
 }

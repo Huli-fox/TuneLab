@@ -19,6 +19,7 @@ using TuneLab.Extensions.Formats.DataInfo;
 using TuneLab.I18N;
 using Avalonia.Platform.Storage;
 using System.Linq;
+using TuneLab.UI.Commands;
 
 namespace TuneLab.Utils;
 
@@ -114,6 +115,28 @@ internal static class Extensions
         return menuItem;
     }
 
+    public static MenuItem BindCommand(this MenuItem menuItem, CommandId command, ICommandContext commandContext)
+    {
+        menuItem.SetAction(() => CommandRouter.TryExecute(commandContext, command));
+        menuItem.SetCommandShortcut(command);
+        return menuItem;
+    }
+
+    public static MenuItem SetCommandShortcut(this MenuItem menuItem, CommandId command)
+    {
+        void applyShortcut()
+        {
+            if (ShortcutRegistry.TryGetShortcut(command, out var shortcut))
+            {
+                menuItem.SetInputGesture(shortcut.Key, shortcut.Modifiers);
+            }
+        }
+
+        applyShortcut();
+        ShortcutRegistry.ShortcutsChanged += applyShortcut;
+        return menuItem;
+    }
+
     public static void Unfocus(this InputElement inputElement)
     {
         Avalonia.StyledElement? s = inputElement;
@@ -144,7 +167,25 @@ internal static class Extensions
 
     public static bool IsHandledByTextBox(this KeyEventArgs e)
     {
-        return e.Source is TextBox textBox && textBox.IsEnabled && textBox.IsEffectivelyVisible && textBox.IsFocused;
+        static bool IsTextInputElement(Avalonia.StyledElement? element)
+        {
+            for (var current = element; current != null; current = current.Parent)
+            {
+                if (current is TextBox textBox && textBox.IsEnabled && textBox.IsEffectivelyVisible && textBox.IsFocused)
+                    return true;
+            }
+
+            return false;
+        }
+
+        if (e.Source is Avalonia.Visual sourceVisual)
+        {
+            var topLevel = TopLevel.GetTopLevel(sourceVisual);
+            if (topLevel?.FocusManager?.GetFocusedElement() is Avalonia.StyledElement focusedElement && IsTextInputElement(focusedElement))
+                return true;
+        }
+
+        return IsTextInputElement(e.Source as Avalonia.StyledElement);
     }
 
     public static ModifierKeys ModifierKeys(this KeyEventArgs e)

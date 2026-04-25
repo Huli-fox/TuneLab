@@ -1,6 +1,7 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media;
 using System;
 using TuneLab.Base.Event;
 using TuneLab.Base.Utils;
@@ -32,6 +33,7 @@ internal class ScrollView : Panel
     public ScrollView()
     {
         ClipToBounds = true;
+        Background = Brushes.Transparent;
 
         mHorizontalAxis.AxisChanged += InvalidateArrange;
         mVerticalAxis.AxisChanged += InvalidateArrange;

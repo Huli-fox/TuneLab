@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Input;
 using Avalonia.Media;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reactive.Linq;
@@ -16,13 +17,14 @@ using TuneLab.Configs;
 using TuneLab.GUI.Components;
 using TuneLab.I18N;
 using TuneLab.Utils;
+using TuneLab.UI.Commands;
 using static TuneLab.GUI.Dialog;
 using Button = TuneLab.GUI.Components.Button;
 using Style = TuneLab.GUI.Style;
 
 namespace TuneLab.UI;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, ICommandContext
 {
     internal Editor Editor => mEditor;
 
@@ -37,6 +39,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        mCommands = new CommandMap(new Dictionary<CommandId, Action>
+        {
+            [CommandId.AppToggleFullScreen] = () => OnMenuFullScreen(this, new RoutedEventArgs()),
+        });
         platform = Environment.OSVersion.Platform;
         ApplySavedWindowPlacement();
         Width = Settings.MainWindowWidth;
@@ -82,7 +88,10 @@ public partial class MainWindow : Window
  
         this.AttachWindowStateHandler();
 
-        mEditor = new Editor();
+        mEditor = new Editor()
+        {
+            ParentCommandContext = this,
+        };
         mEditor.Document.ProjectNameChanged.Subscribe(UpdateTitle);
         mEditor.Document.StatusChanged += UpdateTitle;
         MenuBar.Children.Add(mEditor.Menu);
@@ -297,16 +306,10 @@ public partial class MainWindow : Window
 
     void OnKeyDown(object? sender, KeyEventArgs args)
     {
-        if (args.KeyModifiers == KeyModifiers.None)
-        {
-            switch (args.Key)
-            {
-                case Key.F11:
-                    OnMenuFullScreen(this, new RoutedEventArgs()); // Call your existing method
-                    args.Handled = true;
-                    break;
-            }
-        }
+        if (args.Handled)
+            return;
+
+        CommandRouter.TryHandle(args, mEditor);
     }
     
     void OnMenuFullScreen(object sender, RoutedEventArgs args) {
@@ -314,6 +317,19 @@ public partial class MainWindow : Window
                 ? WindowState.Normal
                 : WindowState.FullScreen;
     }
+
+    bool ICommandContext.CanExecuteCommand(CommandId command)
+    {
+        return mCommands.Contains(command);
+    }
+
+    bool ICommandContext.ExecuteCommand(CommandId command)
+    {
+        return mCommands.TryExecute(command);
+    }
+
+    ICommandContext? ICommandContext.ParentCommandContext => null;
     
     readonly Editor mEditor;
+    readonly CommandMap mCommands;
 }
